@@ -27,10 +27,11 @@ my %WriteMakefileArgs = (
     "List::MoreUtils" => "0.33",
     "List::Util" => "1.23",
     "Moose" => "2.0204",
+    "MooseX::ClassAttribute" => "0.26",
     "SQL::Abstract" => "1.72",
     "namespace::autoclean" => "0.13"
   },
-  "VERSION" => "0.01",
+  "VERSION" => "0.02",
   "test" => {
     "TESTS" => "t/*.t"
   }

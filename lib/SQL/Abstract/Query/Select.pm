@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Select;
 {
-  $SQL::Abstract::Query::Select::VERSION = '0.01';
+  $SQL::Abstract::Query::Select::VERSION = '0.02';
 }
 use Moose;
 use namespace::autoclean;
@@ -11,89 +11,89 @@ SQL::Abstract::Query::Select - An object that represents a SQL SELECT.
 
 =head1 SYNOPSIS
 
-You'll need to create an L<SQL::Abstract::Query> object first:
-
     use SQL::Abstract::Query;
-    my $query = SQL::Absract::Query->new();
-
-Now you can create a select object and use it:
-
-    my $select = $query->select(
-        [qw( name email )],
-        'users',
-        { is_admin => 'is_admin', age => {'>=', 'min_age'} },
-        \%attributes,
-    );
+    my $query = SQL::Abstract::Query->new();
     
-    my $sql = $select->sql();
-    my $sth = $dbh->prepare( $sql );
+    # Find all cities:
+    my ($sql, @bind_values) = $query->select( 'city_id', 'city' );
+    my $rows = $dbh->selectall_arrayref( $sql, undef, @bind_values );
     
-    my @bind_values = $select->values({ is_admin => 1, min_age => 18 });
-    $sth->execute( @bind_values );
-    
-    while (my $row = $sth->fetchrow_array()) {
-        print "$row->{name}: $row->{email}\n";
-    }
-
-Or you can bypass object creation and use an interface very similar
-to L<SQL::Abstract>'s:
-
+    # Find all cities in a particular country:
     my ($sql, @bind_values) = $query->select(
-        [qw( name email )],
-        'users',
-        { is_admin => 1, age => {'>=', 18} },
-        \%attributes,
+        [ 'city_id', 'city' ],
+        'city',
+        { country_id => $country_id },
     );
+    my $rows = $dbh->selectall_arrayref( $sql, undef, @bind_values );
+    
+    # Use the OO interface to re-use the query and select cities from
+    # multiple countries:
+    my $select = $query->select(
+        [ 'city_id', 'city' ],
+        'city',
+        { country_id => 'id' },
+    );
+    my $sth = $dbh->prepare( $select->sql() );
+    
+    $sth->execute( $select->values({ id => $country1_id }) );
+    my $country1_cities = $sth->fetchall_arrayref();
+    
+    $sth->execute( $select->values({ id => $country2_id }) );
+    my $country2_cities = $sth->fetchall_arrayref();
 
 =head1 DESCRIPTION
 
-This module extends L<SQL::Abstract>'s select() method by wrapping it
-up in to an object that can be re-used and adding additional functionality.
+The select query wraps around L<SQL::Abstract>'s select() method and provides
+extra SQL syntax for table joins, grouping, ordering, and limiting results.
+
+Instances of this class should be created using L<SQL::Abstract::Query/select>.
+
+This class applies the L<SQL::Abstract::Query::Statement> role.
 
 =cut
 
-with 'SQL::Abstract::Query::Base';
+with 'SQL::Abstract::Query::Statement';
 
 use Carp qw( croak );
 use Clone qw( clone );
 use List::MoreUtils qw( zip any );
 use List::Util qw( first );
 
-around 'BUILDARGS' => sub{
-    my $orig  = shift;
-    my $class = shift;
+sub _build_positional_args {
+    return ['fields', 'from', 'where'];
+}
 
-    if (@_ and ref($_[0])) {
-        my ($query, $fields, $from, $where, $attributes) = @_;
+sub _build_abstract_result {
+    my ($self) = @_;
 
-        $attributes ||= {};
-        my $args = {
-            query  => $query,
-            fields => $fields,
-            from   => $from,
-            %$attributes,
-        };
+    my ($from, @from_values) = $self->_apply_from();
 
-        $args->{where} = $where if $where;
+    my ($sql, @bind_values) = $self->query->abstract->select(
+        $from,
+        $self->fields(),
+        $self->where(),
+    );
 
-        return $class->$orig( $args );
-    }
+    $self->_apply_group_by( \$sql );
 
-    return $class->$orig( @_ );
-};
+    $self->_apply_order_by( \$sql );
 
-=head1 ATTRIBUTES
+    $self->_apply_limit( \$sql, \@bind_values );
+
+    return [$sql, @from_values, @bind_values];
+}
+
+=head1 ARGUMENTS
 
 =head2 fields
 
-An array ref of field names or a scalar.  This is passed unmodified to
-L<SQL::Abstract>.
+An arrayref or a plain string of field names.
 
 =cut
 
 has fields => (
     is       => 'ro',
-    isa      => 'ArrayRef|Str',
+    isa      => 'Str|ArrayRef',
     required => 1,
 );
 
@@ -142,117 +142,6 @@ has from => (
     required => 1,
 );
 
-=head2 where
-
-The WHERE clause which can be a hash ref, an array ref, or a scalar.  This gets
-passed to L<SQL::Abstract> unmodified.
-
-=cut
-
-has where => (
-    is => 'ro',
-    isa => 'HashRef|ArrayRef|Str',
-);
-
-=head2 group_by
-
-The GROUP BY clause which can be a scalar or an array reference.  L<SQL::Abstract>
-does not natively support GROUP BY so this module generates the SQL itself.  Here are
-some samples:
-
-Group by a single column:
-
-    group_by => 'foo'
-    GROUP BY "foo"
-
-Group by several columns:
-
-    group_by => ['foo', 'bar']
-    GROUP BY "foo", "bar"
-
-=cut
-
-has group_by => (
-    is  => 'ro',
-    isa => 'Str|ArrayRef',
-);
-
-=head2 order_by
-
-The ORDER BY clause which can be a scalar or an array reference.  This order_by
-is not processed by L<SQL::Abstract> at all and is instead handled by this module
-completely.  Here are some samples of valid input and what the SQL would look like:
-
-Order by a single column:
-
-    order_by => 'foo'
-    ORDER BY "foo"
-
-Order by several columns:
-
-    order_by => ['foo', 'bar']
-    ORDER BY "foo", "bar"
-
-Order by several columns, setting the ordering direction:
-
-    order_by => [ [foo => 'asc'], 'bar' ]
-    ORDER BY "foo" ASC, "bar"
-
-=cut
-
-has order_by => (
-    is  => 'ro',
-    isa => 'Str|HashRef|ArrayRef',
-);
-
-=head2 limit
-
-The maximum number of rows that the query should return.  This can
-be either an integer or a string for use with values().
-
-=cut
-
-has limit => (
-    is => 'ro',
-    isa => 'Str',
-);
-
-=head2 offset
-
-The number of rows to offset the query by.  For example, if you had 20
-rows and set the limit to 10 and the offset to 5 you'd get rows 5
-through 14 (where row 1 is the first row).  The setting of offset will
-be ignored if the limit is not also set.
-
-This can be either an integer or a string for use with values().
-
-=cut
-
-has offset => (
-    is  => 'ro',
-    isa => 'Str',
-);
-
-sub _build_abstract_result {
-    my ($self) = @_;
-
-    my ($from, @from_values) = $self->_apply_from();
-
-    my ($sql, @bind_values) = $self->query->abstract->select(
-        $from,
-        $self->fields(),
-        $self->where(),
-    );
-
-    $self->_apply_group_by( \$sql );
-
-    $self->_apply_order_by( \$sql );
-
-    $self->_apply_limit( \$sql, \@bind_values );
-
-    return [$sql, @from_values, @bind_values];
-}
-
 sub _apply_from {
     my ($self) = @_;
 
@@ -267,7 +156,7 @@ sub _apply_from {
     foreach my $table (@$from) {
         if (!ref $table) {
             $sql .= ', ' if $sql;
-            $sql .= $self->_quote( $table );
+            $sql .= $self->quote( $table );
             $previous_table = { name => $table, common => $table };
             next;
         }
@@ -309,11 +198,11 @@ sub _apply_from {
             push @parts, 'JOIN';
         }
 
-        push @parts, $self->_quote( $table->{name} );
-        push @parts, $self->_quote( $table->{as} ) if $table->{as};
+        push @parts, $self->quote( $table->{name} );
+        push @parts, $self->quote( $table->{as} ) if $table->{as};
 
         if ($table->{using}) {
-            my $right = '= ' . $self->_quote( $previous_table->{common} . '.' . $table->{using} );
+            my $right = '= ' . $self->quote( $previous_table->{common} . '.' . $table->{using} );
             $table->{on} = { $table->{common} . '.' . $table->{using} => \$right };
         }
 
@@ -342,6 +231,40 @@ sub _apply_from {
     return( \$sql, @bind_values );
 }
 
+=head2 where
+
+Optional.  See L<SQL::Abstract::Query::Statement/Where>.
+
+=cut
+
+has where => (
+    is => 'ro',
+    isa => 'SQL::Abstract::Query::Types::Where',
+);
+
+=head2 group_by
+
+The optional GROUP BY clause which can be a scalar or an array reference.
+L<SQL::Abstract> does not natively support GROUP BY so this module generates
+the SQL itself.  Here are some samples:
+
+Group by a single column:
+
+    group_by => 'foo'
+    GROUP BY "foo"
+
+Group by several columns:
+
+    group_by => ['foo', 'bar']
+    GROUP BY "foo", "bar"
+
+=cut
+
+has group_by => (
+    is  => 'ro',
+    isa => 'Str|ArrayRef',
+);
+
 sub _apply_group_by {
     my ($self, $sql) = @_;
 
@@ -352,14 +275,42 @@ sub _apply_group_by {
 
     $$sql .= ' GROUP BY ';
     if (ref $group_by) {
-        $$sql .= join(', ', map { $self->_quote( $_ ) } @$group_by);
+        $$sql .= join(', ', map { $self->quote( $_ ) } @$group_by);
     }
     else {
-        $$sql .= $self->_quote( $group_by );
+        $$sql .= $self->quote( $group_by );
     }
 
     return;
 }
+
+=head2 order_by
+
+The optional ORDER BY clause which can be a scalar or an array reference.  This order_by
+is not processed by L<SQL::Abstract> at all and is instead handled by this module
+completely.  Here are some samples of valid input and what the SQL would look like:
+
+Order by a single column:
+
+    order_by => 'foo'
+    ORDER BY "foo"
+
+Order by several columns:
+
+    order_by => ['foo', 'bar']
+    ORDER BY "foo", "bar"
+
+Order by several columns, setting the ordering direction:
+
+    order_by => [ {foo => 'asc'}, 'bar' ]
+    ORDER BY "foo" ASC, "bar"
+
+=cut
+
+has order_by => (
+    is  => 'ro',
+    isa => 'Str|ArrayRef',
+);
 
 sub _apply_order_by {
     my ($self, $sql) = @_;
@@ -367,28 +318,41 @@ sub _apply_order_by {
     my $order_by = $self->order_by();
     return if !$order_by;
 
-    my $abstract = $self->query->abstract();
-
     $$sql .= ' ORDER BY ';
     if (ref $order_by) {
         my @parts;
         foreach my $field (@$order_by) {
-            if (ref($field) eq 'ARRAY' and @$field==2) {
-                push @parts, $self->_quote( $field->[0] ) . ' ' . uc( $field->[1] );
+            if (ref($field) eq 'HASH') {
+                foreach my $key (keys %$field) {
+                    push @parts, $self->quote( $key ) . ' ' . uc( $field->{$key} );
+                }
                 next;
             }
 
-            push @parts, $self->_quote( $field );
+            push @parts, $self->quote( $field );
         }
 
         $$sql .= join(', ', @parts);
     }
     else {
-        $$sql .= $self->_quote( $order_by );
+        $$sql .= $self->quote( $order_by );
     }
 
     return;
 }
+
+=head2 limit
+
+The optional LIMIT clause which limits the number of rows that will
+be returned.  This can be either an integer or a string for use with
+values().
+
+=cut
+
+has limit => (
+    is => 'ro',
+    isa => 'Str',
+);
 
 sub _apply_limit {
     my ($self, $sql, $bind_values) = @_;
@@ -420,9 +384,9 @@ sub _apply_limit {
         push @$bind_values, $limit;
     }
     elsif ($dialect eq 'rownum') {
-        my $inner_table   = $self->_quote('A');
-        my $outer_table   = $self->_quote('B');
-        my $rownum_column = $self->_quote('r');
+        my $inner_table   = $self->quote('A');
+        my $outer_table   = $self->quote('B');
+        my $rownum_column = $self->quote('r');
 
         $$sql = "SELECT * FROM ( SELECT $inner_table.*, ROWNUM $rownum_column FROM ( " . $$sql . " ) $inner_table WHERE ROWNUM <= ? + ? ) $outer_table WHERE $rownum_column > ?";
         push @$bind_values, $limit, $offset, $offset;
@@ -430,6 +394,22 @@ sub _apply_limit {
 
     return;
 }
+
+=head2 offset
+
+The optional offeset for the LIMIT clause which changes the sarting
+position of the limit.  For example, if you set the limit to 10 and
+the offset to 5 you'd get rows 5 through 14 (where row 1 is the first
+row).  The setting of offset will be ignored if the limit is not also set.
+
+This can be either an integer or a string for use with values().
+
+=cut
+
+has offset => (
+    is  => 'ro',
+    isa => 'Str',
+);
 
 __PACKAGE__->meta->make_immutable;
 1;

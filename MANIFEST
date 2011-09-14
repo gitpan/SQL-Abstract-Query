@@ -5,10 +5,10 @@ META.yml
 Makefile.PL
 README
 lib/SQL/Abstract/Query.pm
-lib/SQL/Abstract/Query/Base.pm
 lib/SQL/Abstract/Query/Delete.pm
 lib/SQL/Abstract/Query/Insert.pm
 lib/SQL/Abstract/Query/Select.pm
+lib/SQL/Abstract/Query/Statement.pm
 lib/SQL/Abstract/Query/Update.pm
 t/00-compile.t
 t/dbi.t

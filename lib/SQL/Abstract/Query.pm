@@ -1,6 +1,6 @@
 package SQL::Abstract::Query;
 {
-  $SQL::Abstract::Query::VERSION = '0.01';
+  $SQL::Abstract::Query::VERSION = '0.02';
 }
 use Moose;
 use namespace::autoclean;
@@ -10,6 +10,32 @@ use namespace::autoclean;
 SQL::Abstract::Query - An advanced SQL generator.
 
 =head1 SYNOPSIS
+
+    use SQL::Abstract::Query;
+    
+    # Create a new query object by specifying the SQL dialect:
+    my $query = SQL::Abstract::Query->new( $dbh );
+    my $query = SQL::Abstract::Query->new( 'mysql' );
+    my $query = SQL::Abstract::Query->new( %arguments );
+    my $query = SQL::Abstract::Query->new();
+    
+    # Use the flexible OO interface:
+    my $statement = $query->insert( $table, \@fields );
+    my $statement = $query->update( $table, \@fields, \%where );
+    my $statement = $query->select( \@fields, \@from, \%where, \%attributes );
+    my $statement = $query->delete( $table, \%where );
+    
+    my $sth = $dbh->prepare( $statement->sql() );
+    $sth->execute( $statement->values( \%field_values ) );
+    
+    # Use the simpler procedural interface:
+    my ($sql, @bind_values) = $query->insert( $table, \%field_values );
+    my ($sql, @bind_values) = $query->update( $table, \%field_values, \%where );
+    my ($sql, @bind_values) = $query->select( \@fields, \@from, \%where, \%attributes );
+    my ($sql, @bind_values) = $query->delete( $table, \%where );
+    
+    my $sth = $dbh->prepare( $sql );
+    $sth->execute( @bind_values );
 
 =head1 DESCRIPTION
 
@@ -35,8 +61,8 @@ L<SQL::Abstract::Limit>, L<SQL::Maker>, and L<SQL::Abstract::More>.
 =item * The API has been designed in such a way that extending the functionality in the
 future should be less likely to break backwards compatibility.
 
-=item * Re-using a query via prepare/execute is trivial and can be done with for all
-query types (even UPDATE ... WHERE ...).
+=item * Re-using a statement via prepare/execute is trivial and can be done with for all
+statement types (even UPDATE ... WHERE ...).
 
 =back
 
@@ -52,17 +78,17 @@ use SQL::Abstract::Query::Delete;
 
 =head1 CONSTRUCTOR
 
-    # Create a new instance with the standard dialect:
-    my $query = SQL::Abstract::Query->new();
-    
     # Auto-detect the appropriate dialect from a DBI handle:
     my $query = SQL::Abstract::Query->new( $dbh );
     
     # Explicitly set the dialect that you want:
     my $query = SQL::Abstract::Query->new( 'oracle' );
     
-    # Or specify attributes explicitly:
-    my $query = SQL::Abstract::Query->new( %attributes );
+    # Or specify arguments explicitly:
+    my $query = SQL::Abstract::Query->new( %arguments );
+    
+    # The "standard" dialect is the default:
+    my $query = SQL::Abstract::Query->new();
 
 =cut
 
@@ -77,7 +103,7 @@ around 'BUILDARGS' => sub{
     return $self->$orig( @_ );
 };
 
-=head1 ATTRIBUTES
+=head1 ARGUMENTS
 
 =head2 dialect
 
@@ -226,6 +252,8 @@ sub _build_sep_char {
     return $dialects->{ $self->dialect() }->{sep_char};
 }
 
+=head1 ATTRIBUTES
+
 =head2 abstract
 
 The underlying L<SQL::Abstract> object that will be used to generate
@@ -248,17 +276,24 @@ sub _build_abstract {
     );
 }
 
-=head1 METHODS
+=head1 STATEMENT METHODS
+
+New statement objects should be created using these methods.  Each
+statement class has their own documentation that explains the
+various arguments that they accept, which ones are optional, and
+the intricacies of how they work.
+
+All the satement classes apply the L<SQL::Abstract::Query::Statement>
+role.  Look there to see all the shared features which all statement
+objects posses.
 
 =head2 insert
 
-    # Create a new SQL::Abstract::Query::Insert object:
-    my $insert = $query->insert( $table, \@fields, \%attributes );
+    my $insert = $query->insert( $table, \@fields );
     
-    # Or bypass the object alltogether if you don't need it:
-    my ($sql, @bind_values) = $query->insert( $table, \%field_values, \%attributes );
+    my ($sql, @bind_values) = $query->insert( $table, \%field_values );
 
-See the L<SQL::Abstract::Query::Insert> documentation for more details.
+See L<SQL::Abstract::Query::Insert>.
 
 =cut
 
@@ -270,11 +305,11 @@ sub insert {
 
 =head2 update
 
-    my $update = $query->update( $table, \@fields, \%where, \%attributes );
+    my $update = $query->update( $table, \@fields, \%where );
     
-    my ($sql, @bind_values) = $query->update( $table, \%field_values, \%where, \%attributes );
+    my ($sql, @bind_values) = $query->update( $table, \%field_values, \%where );
 
-See the L<SQL::Abstract::Query::Update> documentation for more details.
+See L<SQL::Abstract::Query::Update>.
 
 =cut
 
@@ -286,11 +321,11 @@ sub update {
 
 =head2 select
 
-    my $select = $query->select( \@fields, $from, \%where, \%attributes );
+    my $select = $query->select( \@fields, \@from, \%where, \%arguments );
     
-    my ($sql, @bind_values) = $query->select( \@fields, $from, \%where, \%attributes );
+    my ($sql, @bind_values) = $query->select( \@fields, \@from, \%where, \%arguments );
 
-See the L<SQL::Abstract::Query::Select> documentation for more details.
+See L<SQL::Abstract::Query::Select>.
 
 =cut
 
@@ -302,11 +337,11 @@ sub select {
 
 =head2 delete
 
-    my $delete = $query->delete( $table, \%where, \%attributes );
+    my $delete = $query->delete( $table, \%where );
     
-    my ($sql, @bind_values) = $query->delete( $table, \%where, \%attributes );
+    my ($sql, @bind_values) = $query->delete( $table, \%where );
 
-See the L<SQL::Abstract::Query::Delete> documentation for more details.
+See L<SQL::Abstract::Query::Delete>.
 
 =cut
 
@@ -319,6 +354,52 @@ sub delete {
 __PACKAGE__->meta->make_immutable;
 1;
 __END__
+
+=head1 NAMED PLACEHOLDERS
+
+In this module placeholders have an additional use.  In order to re-use queries
+placeholder values must be named so that the L<SQL::Abstract::Query::Statement/values>
+method may work correctly. In L<SQL::Abstract> you must generate a new UPDATE statement for
+every update you want to execute.  In this module this is much simplified by using named
+placeholders:
+
+    my $update = $query->update('customer', ['email', 'active'], {customer_id => 'id'});
+    my $sth = $dbh->prepare( $update->sql() );
+    
+    $sth->execute( $update->values({ email=>'b@e.com', active=>1, id=>1 }) );
+    $sth->execute( $update->values({ email=>'j@e.com', active=>1, id=>2 }) );
+    $sth->execute( $update->values({ email=>'n@e.com', active=>1, id=>3 }) );
+
+All statement types support named placeholders for use with values().  In any spot of
+a statement where you would normally pass a value you can instead pass a name, then
+when you call values() you use that name as the key.
+
+Here's an example that uses this feature to provide contextual information in the
+placeholder names:
+
+    my $select = $query->select(
+        'user_id',
+        'users',
+        {
+            posts => {-between => ['min_posts', 'max_posts']},
+            role => 'moderator',
+        },
+    );
+    
+    my $sth = $dbh->prepare( $select->sql() );
+    
+    my $one_star_moderators = $sth->fetchcol_arrayhref( $select->values({
+        min_posts => 0,
+        max_posts => 10,
+    }) );
+    
+    my $two_star_moderators = $sth->fetchrow_hashref( $select->values({
+        min_posts => 11,
+        max_posts => 50,
+    }) );
+
+Named placeholders can be mixed with non-named placeholders, as in the above
+example with the role=>'moderator' check.
 
 =head1 APPENDIX
 
@@ -407,7 +488,7 @@ purposes.
 =item * The insert() method does not accept field values as an array reference.
 This is by design - SQL that depends on the order of the columns in the
 database is brittle and will eventually break.  Also, due to the need for the
-query objects to be re-useable the array ref form of fields has been re-purposed.
+statement objects to be re-useable the array ref form of fields has been re-purposed.
 That being said, perhaps there is a use case where this would be useful.  If so,
 thunk the author on the head and let him know.
 
@@ -432,7 +513,7 @@ For now, just shoot the author an e-mail.
 
 If you'd like to contribute bug fixes, enhancements, additional test covergage,
 or documentation to this module then by all means do so.  You can fork this
-repository using github (l<https://github.com/bluefeet/SQL-Abstract-Query>) and
+repository using L<github|https://github.com/bluefeet/SQL-Abstract-Query> and
 then send the author a pull request.
 
 Please contact the author if you are considering doing this and discuss your ideas.
@@ -442,17 +523,19 @@ Please contact the author if you are considering doing this and discuss your ide
 Currently there is no particular mailing list or IRC channel for this project.
 You can shoot the author an e-mail if you have a question.
 
-If you'd like to report an issue you can use github's issue tracker:
-L<https://github.com/bluefeet/SQL-Abstract-Query/issues>
+If you'd like to report an issue you can use github's
+L<issue tracker|https://github.com/bluefeet/SQL-Abstract-Query/issues>.
 
 =head1 TODO
 
 =over
 
-=item * The Insert, Update, and Delete docs are way under-documented.
+=item * The fields() argument of the select statement should support the ability
+to assign aliases to columns.  Currently the only way to do this with SQL::Abstract
+is by providing a verbatim string where the fields sql must be manually built.
 
 =item * Document all the various ways this module can be used, possibly as a
-cookboob.  Documentation is sorely missing info on placeholders, for one.
+cookbook.  Show how sub-queries can be used, for example.
 
 =item * Create a unit test that compares the output of this module compared to
 SQL::Abstract, proving that this module is at least as capable.
@@ -469,7 +552,7 @@ write brittle hacks.
 
 =item * In addition to the above it would be nice if just a portion of a SQL query
 could be generated, such as just the GROUP BY clause, etc.  This would be similar
-to SQL::Abstracts's where() method but that API would likely be very different.
+to SQL::Abstracts's where() method but the API would likely be very different.
 
 =item * Allow for more join types.  Currently only JOIN and LEFT JOIN work.  This
 should be trivial to add.
@@ -483,6 +566,14 @@ should be trivial to add.
 =head1 AUTHOR
 
 Aran Clary Deltac <bluefeet@gmail.com>
+
+=head1 CONTRIBUTORS
+
+=over
+
+=item * L<metaperl|https://github.com/metaperl>
+
+=back
 
 =head1 LICENSE
 

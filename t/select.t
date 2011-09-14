@@ -97,13 +97,13 @@ my $query = SQL::Abstract::Query->new();
         ['name', 'age', 'height'],
         'users',
         undef,
-        { order_by => [['age','desc'], 'height'] },
+        { order_by => [{'age' => 'desc'}, 'height'] },
     );
 
     is(
         $select->sql(),
         'SELECT "name", "age", "height" FROM "users" ORDER BY "age" DESC, "height"',
-        'array order by',
+        'hash order by',
     );
 }
 

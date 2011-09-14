@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Insert;
 {
-  $SQL::Abstract::Query::Insert::VERSION = '0.01';
+  $SQL::Abstract::Query::Insert::VERSION = '0.02';
 }
 use Moose;
 use namespace::autoclean;
@@ -9,53 +9,37 @@ use namespace::autoclean;
 
 SQL::Abstract::Query::Insert - An object that represents a SQL INSERT.
 
-=cut
+=head1 SYNOPSIS
 
-with 'SQL::Abstract::Query::Base';
+    use SQL::Abstract::Query;
+    my $query = SQL::Abstract::Query->new( $dbh );
+    
+    # Insert a new country:
+    my ($sql, @bind_values) = $query->insert( 'country', { country=>$name } );
+    $dbh->do( $sql, undef, @bind_values );
+    
+    # Use the OO interface to re-use the query and insert multiple countries:
+    my $insert = $query->insert( 'country', ['country'] );
+    my $sth = $dbh->prepare( $insert->sql() );
+    $sth->execute( $insert->values({ country => $country1_name });
+    $sth->execute( $insert->values({ country => $country2_name });
 
-around 'BUILDARGS' => sub{
-    my $orig  = shift;
-    my $class = shift;
+=head1 DESCRIPTION
 
-    if (@_ and ref($_[0])) {
-        my ($query, $table, $field_values, $attributes) = @_;
+The insert query is a very lightweight wrapper around L<SQL::Abstract>'s insert()
+method and provides no additional SQL syntax.
 
-        $attributes ||= {};
-        my $args = {
-            query        => $query,
-            table        => $table,
-            field_values => $field_values,
-            %$attributes,
-        };
+Instances of this class should be created using L<SQL::Abstract::Query/insert>.
 
-        return $class->$orig( $args );
-    }
-
-    return $class->$orig( @_ );
-};
-
-=head1 ATTRIBUTES
-
-=head2 table
+This class applies the L<SQL::Abstract::Query::Statement> role.
 
 =cut
 
-has table => (
-    is       => 'ro',
-    isa      => 'SQL::Abstract::Query::Types::Table',
-    required => 1,
-);
+with 'SQL::Abstract::Query::Statement';
 
-=head2 field_values
-
-=cut
-
-has field_values => (
-    is       => 'ro',
-    isa      => 'SQL::Abstract::Query::Types::FieldValues',
-    coerce   => 1,
-    required => 1,
-);
+sub _build_positional_args {
+    return ['table', 'field_values'];
+}
 
 sub _build_abstract_result {
     my ($self) = @_;
@@ -67,6 +51,33 @@ sub _build_abstract_result {
 
     return [$sql, @bind_values];
 }
+
+=head1 ARGUMENTS
+
+=head2 table
+
+See L<SQL::Abstract::Query::Statement/Table>.
+
+=cut
+
+has table => (
+    is       => 'ro',
+    isa      => 'SQL::Abstract::Query::Types::Table',
+    required => 1,
+);
+
+=head2 field_values
+
+See L<SQL::Abstract::Query::Statement/FieldValues>.
+
+=cut
+
+has field_values => (
+    is       => 'ro',
+    isa      => 'SQL::Abstract::Query::Types::FieldValues',
+    coerce   => 1,
+    required => 1,
+);
 
 __PACKAGE__->meta->make_immutable;
 1;
