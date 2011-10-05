@@ -21,8 +21,9 @@ requires:
   Moose: 2.0204
   MooseX::ClassAttribute: 0.26
   SQL::Abstract: 1.72
+  SQL::Dialect: 0.02
   namespace::autoclean: 0.13
 resources:
   bugtracker: https://github.com/bluefeet/SQL-Abstract-Query/issues
   repository: git://github.com/bluefeet/SQL-Abstract-Query.git
-version: 0.02
+version: 0.03

@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Update;
 {
-  $SQL::Abstract::Query::Update::VERSION = '0.02';
+  $SQL::Abstract::Query::Update::VERSION = '0.03';
 }
 use Moose;
 use namespace::autoclean;

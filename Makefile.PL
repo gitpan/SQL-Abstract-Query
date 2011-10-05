@@ -29,9 +29,10 @@ my %WriteMakefileArgs = (
     "Moose" => "2.0204",
     "MooseX::ClassAttribute" => "0.26",
     "SQL::Abstract" => "1.72",
+    "SQL::Dialect" => "0.02",
     "namespace::autoclean" => "0.13"
   },
-  "VERSION" => "0.02",
+  "VERSION" => "0.03",
   "test" => {
     "TESTS" => "t/*.t"
   }

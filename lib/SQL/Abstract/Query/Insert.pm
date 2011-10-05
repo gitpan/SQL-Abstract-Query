@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Insert;
 {
-  $SQL::Abstract::Query::Insert::VERSION = '0.02';
+  $SQL::Abstract::Query::Insert::VERSION = '0.03';
 }
 use Moose;
 use namespace::autoclean;

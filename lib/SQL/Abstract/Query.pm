@@ -1,6 +1,6 @@
 package SQL::Abstract::Query;
 {
-  $SQL::Abstract::Query::VERSION = '0.02';
+  $SQL::Abstract::Query::VERSION = '0.03';
 }
 use Moose;
 use namespace::autoclean;
@@ -16,7 +16,7 @@ SQL::Abstract::Query - An advanced SQL generator.
     # Create a new query object by specifying the SQL dialect:
     my $query = SQL::Abstract::Query->new( $dbh );
     my $query = SQL::Abstract::Query->new( 'mysql' );
-    my $query = SQL::Abstract::Query->new( %arguments );
+    my $query = SQL::Abstract::Query->new( $dialect );
     my $query = SQL::Abstract::Query->new();
     
     # Use the flexible OO interface:
@@ -69,6 +69,7 @@ statement types (even UPDATE ... WHERE ...).
 =cut
 
 use SQL::Abstract;
+use SQL::Dialect;
 use Moose::Util::TypeConstraints;
 
 use SQL::Abstract::Query::Insert;
@@ -84,8 +85,8 @@ use SQL::Abstract::Query::Delete;
     # Explicitly set the dialect that you want:
     my $query = SQL::Abstract::Query->new( 'oracle' );
     
-    # Or specify arguments explicitly:
-    my $query = SQL::Abstract::Query->new( %arguments );
+    # Pass a pre-created SQL::Dialect object:
+    my $query = SQL::Abstract::Query->new( $dialect );
     
     # The "standard" dialect is the default:
     my $query = SQL::Abstract::Query->new();
@@ -96,7 +97,7 @@ around 'BUILDARGS' => sub{
     my $orig = shift;
     my $self = shift;
 
-    if (@_ == 1) {
+    if (@_ == 1 and ref($_[0]) ne 'HASH') {
         return $self->$orig( dialect => $_[0] );
     }
 
@@ -109,147 +110,32 @@ around 'BUILDARGS' => sub{
 
 Each implementation, or dialect, of SQL has quirks that slightly (or in some cases
 drastically) change the way that the SQL must be written to get a particular task
-done.  In order for this module to know which particular set of quirks it should
-use a dialect must be declared.  The dialect will default to "standard" which will
-match the ISO SQL standards.  But, unless you are using PostgreSQL or SQLite, you
-are most likely using a database that does not conform to the standards and will
-need special treatment by this module to produce SQL that is compatible.
+done.  In order for this module to know which particular set of quirks a dialect
+must be declared.  See the documentation for L<SQL::Dialect> to see how this works.
 
-Currently a dialect can be one of:
+The dialect can be set via a string (the dialect name), a $dbh (the dialect is
+auto-detected), or you can pass a SQL::Dialect object that you created yourself.
 
-    standard
-    mysql
-    oracle
-
-When declaring the dialect that you want you can either specify one of the dialects
-above, or you can just pass a DBI handle ($dbh) and it will be auto-detected.  Currently
-the list of supported DBI Driver is limited to:
-
-    DBD::mysql  (mysql)
-    DBD::Oracle (oracle)
-    DBD::Pg     (standard)
-    DBD::PgPP   (standard)
-    DBD::SQLite (standard)
-
-If the driver that you are using is not in the above list then please contact the
-author and work with them to get it added.
+The dialect is optional.  If none is specified then a simple, default, dialect will
+be used.
 
 =cut
-
-my $dbd_dialects = {
-    'mysql'  => 'mysql',
-    'Oracle' => 'oracle',
-    'Pg'     => 'standard',
-    'PgPP'   => 'standard',
-    'SQLite' => 'standard',
-};
-
-my $dialects = {
-    standard => {
-        limit      => 'offset',
-        quote_char => q["],
-        sep_char   => q[.],
-    },
-    mysql => {
-        limit      => 'xy',
-        quote_char => q[`],
-        sep_char   => q[.],
-    },
-    oracle => {
-        limit      => 'rownum',
-        quote_char => q["],
-        sep_char   => q[.],
-    },
-};
 
 subtype 'SQL::Abstract::Query::Types::Dialect',
-    as enum([ keys %$dialects ]);
+    as class_type('SQL::Dialect');
 
 coerce 'SQL::Abstract::Query::Types::Dialect',
-    from class_type('DBI::db'),
-    via { $dbd_dialects->{ $_->{Driver}->{Name} } };
+    from 'Defined',
+    via { SQL::Dialect->new( $_ ) };
 
 has dialect => (
-    is      => 'ro',
-    isa     => 'SQL::Abstract::Query::Types::Dialect',
-    coerce  => 1,
-    default => 'standard',
-);
-
-=head2 limit_dialect
-
-This is the dialect that is used to limit results for a select.  The
-possible values are:
-
-    offset (standard dialect)
-    xy     (mysql dialect)
-    rownum (oracle dialect)
-
-The limit dialect will be automatically derived from the overall dialect
-so you will normally not want to override this.
-
-=cut
-
-my $limit_dialects = [qw(
-    xy
-    offset
-    rownum
-)];
-
-has limit_dialect => (
     is         => 'ro',
-    isa        => enum( $limit_dialects ),
+    isa        => 'SQL::Abstract::Query::Types::Dialect',
+    coerce     => 1,
     lazy_build => 1,
 );
-sub _build_limit_dialect {
-    my ($self) = @_;
-    return $dialects->{ $self->dialect() }->{limit};
-}
-
-=head2 quote_char
-
-The character that is used to quote identifiers, such as table and column
-names.  This will default to the appropriate quoting character for the
-current dialect.
-
-=cut
-
-subtype 'SQL::Abstract::Query::Types::QuoteChar',
-    as 'Str',
-    where { length($_) == 1 },
-    message { 'The quote_char attribute must be a single-character scalar' };
-
-has quote_char => (
-    is         => 'ro',
-    isa        => 'SQL::Abstract::Query::Types::QuoteChar',
-    lazy_build => 1,
-);
-sub _build_quote_char {
-    my ($self) = @_;
-    return $dialects->{ $self->dialect() }->{quote_char};
-}
-
-=head2 sep_char
-
-The character that is used to separate linked identifiers, such as
-a table name followed by a column name.  This will default to the appropriate
-separation character for the current dialect.
-
-=cut
-
-subtype 'SQL::Abstract::Query::Types::SepChar',
-    as 'Str',
-    where { length($_) == 1 },
-    message { 'The sep_char attribute must be a single-character scalar' };
-
-has sep_char => (
-    is         => 'ro',
-    isa        => 'SQL::Abstract::Query::Types::SepChar',
-    lazy_build => 1,
-);
-sub _build_sep_char {
-    my ($self) = @_;
-    return $dialects->{ $self->dialect() }->{sep_char};
+sub _build_dialect {
+    return SQL::Dialect->new();
 }
 
 =head1 ATTRIBUTES
@@ -271,8 +157,8 @@ has abstract => (
 sub _build_abstract {
     my ($self) = @_;
     return SQL::Abstract->new(
-        quote_char => $self->quote_char(),
-        name_sep   => $self->sep_char(),
+        quote_char => $self->dialect->quote_char(),
+        name_sep   => $self->dialect->sep_char(),
     );
 }
 
@@ -571,7 +457,7 @@ Aran Clary Deltac <bluefeet@gmail.com>
 
 =over
 
-=item * L<metaperl|https://github.com/metaperl>
+=item * Terrence Brannon
 
 =back
 

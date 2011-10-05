@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Select;
 {
-  $SQL::Abstract::Query::Select::VERSION = '0.02';
+  $SQL::Abstract::Query::Select::VERSION = '0.03';
 }
 use Moose;
 use namespace::autoclean;
@@ -363,9 +363,9 @@ sub _apply_limit {
 
     my $offset = $self->offset();
     my $abstract = $self->query->abstract();
-    my $dialect = $self->query->limit_dialect();
+    my $dialect = $self->query->dialect();
 
-    if ($dialect eq 'offset') {
+    if ($dialect->supports('limit-offset')) {
         $$sql .= ' LIMIT ?';
         push @$bind_values, $limit;
 
@@ -374,7 +374,7 @@ sub _apply_limit {
             push @$bind_values, $offset;
         }
     }
-    elsif ($dialect eq 'xy') {
+    elsif ($dialect->supports('limit-xy')) {
         $$sql .= ' LIMIT';
         if (defined $offset) {
             $$sql .= ' ?,';
@@ -383,13 +383,16 @@ sub _apply_limit {
         $$sql .= ' ?';
         push @$bind_values, $limit;
     }
-    elsif ($dialect eq 'rownum') {
+    elsif ($dialect->supports('rownum')) {
         my $inner_table   = $self->quote('A');
         my $outer_table   = $self->quote('B');
         my $rownum_column = $self->quote('r');
 
         $$sql = "SELECT * FROM ( SELECT $inner_table.*, ROWNUM $rownum_column FROM ( " . $$sql . " ) $inner_table WHERE ROWNUM <= ? + ? ) $outer_table WHERE $rownum_column > ?";
         push @$bind_values, $limit, $offset, $offset;
+    }
+    else {
+        croak('Limit is not currently supported with the ' . $dialect->type() . ' dialect');
     }
 
     return;

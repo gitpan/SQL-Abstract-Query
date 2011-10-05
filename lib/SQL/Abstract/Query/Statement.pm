@@ -1,6 +1,6 @@
 package SQL::Abstract::Query::Statement;
 {
-  $SQL::Abstract::Query::Statement::VERSION = '0.02';
+  $SQL::Abstract::Query::Statement::VERSION = '0.03';
 }
 use Moose::Role;
 
@@ -185,7 +185,7 @@ sub _build__original_values {
 
 =head2 sql
 
-    my $sql = $insert->sql();
+    my $sql = $statement->sql();
 
 This read-only attribute returns the SQL that was generated
 for the query.
@@ -225,7 +225,7 @@ class_has positional_args => (
 
 =head2 values
 
-    my @bind_values = $object->values({ city=>$city_name, country_id=>$country_id });
+    my @bind_values = $statement->values( \%field_values );
 
 Given a hash ref of field name/value pairs this will return the
 values in the order in which they appear in the SQL.

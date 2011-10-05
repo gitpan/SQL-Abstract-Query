@@ -110,7 +110,7 @@ my $query = SQL::Abstract::Query->new();
 # LIMIT
 
 {
-    my $query = SQL::Abstract::Query->new( limit_dialect => 'offset' );
+    my $query = SQL::Abstract::Query->new( SQL::Dialect->new(limit=>'offset') );
 
     my $select = $query->select(
         ['user_id'],
@@ -133,7 +133,7 @@ my $query = SQL::Abstract::Query->new();
 }
 
 {
-    my $query = SQL::Abstract::Query->new( limit_dialect => 'xy' );
+    my $query = SQL::Abstract::Query->new( SQL::Dialect->new(limit=>'xy') );
 
     my $select = $query->select(
         ['user_id'],
@@ -156,7 +156,7 @@ my $query = SQL::Abstract::Query->new();
 }
 
 {
-    my $query = SQL::Abstract::Query->new( limit_dialect => 'rownum' );
+    my $query = SQL::Abstract::Query->new( SQL::Dialect->new(rownum=>1) );
 
     my $select = $query->select(
         ['user_id'],
@@ -181,6 +181,8 @@ my $query = SQL::Abstract::Query->new();
 # ALL TOGETHER NOW!
 
 {
+    my $query = SQL::Abstract::Query->new( SQL::Dialect->new(limit=>'offset') );
+
     my $select = $query->select(
         ['u.user_id', 'e.address', \'MAX(logs.level)'],
         [ {'users' => 'u'}, {name=>'user_emails', as=>'e', on=>{'e.user_id' => \'= u.user_id'}}, 'logs' ],
